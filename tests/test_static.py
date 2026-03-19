@@ -1,8 +1,10 @@
 """Tests for wonderwall static file server (wonderwall/static.py)."""
 
+import re
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
 
+import pytest
 import requests
 
 import wonderwall.static as static_module
@@ -130,27 +132,6 @@ class TestDomainFiltering:
         )
         assert r.status_code == 200
 
-    def test_wrong_host_redirects_301(self, static_server, monkeypatch):
-        monkeypatch.setattr(static_module, "STATIC_DOMAIN", "files.example.com")
-        (static_server.root / "index.html").write_text("<h1>ok</h1>")
-        r = requests.get(
-            f"{static_server.base_url}/index.html",
-            headers={"Host": "wrong.example.com"},
-            allow_redirects=False,
-        )
-        assert r.status_code == 301
-        assert r.headers["Location"] == "https://wrong.example.com/index.html"
-
-    def test_host_with_port_redirect_preserves_port(self, static_server, monkeypatch):
-        monkeypatch.setattr(static_module, "STATIC_DOMAIN", "files.example.com")
-        r = requests.get(
-            f"{static_server.base_url}/page.html",
-            headers={"Host": "wrong.example.com:8080"},
-            allow_redirects=False,
-        )
-        assert r.status_code == 301
-        assert r.headers["Location"] == "https://wrong.example.com:8080/page.html"
-
     def test_matching_host_with_port_serves_file(self, static_server, monkeypatch):
         monkeypatch.setattr(static_module, "STATIC_DOMAIN", "files.example.com")
         (static_server.root / "doc.txt").write_text("data")
@@ -161,22 +142,135 @@ class TestDomainFiltering:
         )
         assert r.status_code == 200
 
-    def test_head_wrong_host_redirects(self, static_server, monkeypatch):
+
+# ─────────────────────────────────────────────
+# HTTP proxy behavior
+# ─────────────────────────────────────────────
+
+
+class TestProxyBehavior:
+
+    def test_wrong_host_proxies_get(self, static_server, upstream_server, monkeypatch):
         monkeypatch.setattr(static_module, "STATIC_DOMAIN", "files.example.com")
+        (upstream_server.root / "proxied.txt").write_text("from upstream")
+        r = requests.get(
+            f"{static_server.base_url}/proxied.txt",
+            headers={"Host": f"127.0.0.1:{upstream_server.port}"},
+            allow_redirects=False,
+        )
+        assert r.status_code == 200
+        assert r.text == "from upstream"
+
+    def test_wrong_host_proxies_head(self, static_server, upstream_server, monkeypatch):
+        monkeypatch.setattr(static_module, "STATIC_DOMAIN", "files.example.com")
+        (upstream_server.root / "headtest.html").write_text("<html></html>")
         r = requests.head(
+            f"{static_server.base_url}/headtest.html",
+            headers={"Host": f"127.0.0.1:{upstream_server.port}"},
+            allow_redirects=False,
+        )
+        assert r.status_code == 200
+        assert r.content == b""
+
+    def test_proxy_preserves_path(self, static_server, upstream_server, monkeypatch):
+        monkeypatch.setattr(static_module, "STATIC_DOMAIN", "files.example.com")
+        subdir = upstream_server.root / "deep" / "path"
+        subdir.mkdir(parents=True)
+        (subdir / "file.txt").write_text("deep content")
+        r = requests.get(
+            f"{static_server.base_url}/deep/path/file.txt",
+            headers={"Host": f"127.0.0.1:{upstream_server.port}"},
+            allow_redirects=False,
+        )
+        assert r.status_code == 200
+        assert r.text == "deep content"
+
+    def test_proxy_404_from_upstream_forwarded(self, static_server, upstream_server, monkeypatch):
+        monkeypatch.setattr(static_module, "STATIC_DOMAIN", "files.example.com")
+        r = requests.get(
+            f"{static_server.base_url}/nonexistent.txt",
+            headers={"Host": f"127.0.0.1:{upstream_server.port}"},
+            allow_redirects=False,
+        )
+        assert r.status_code == 404
+
+    def test_unreachable_upstream_returns_502(self, static_server, monkeypatch):
+        monkeypatch.setattr(static_module, "STATIC_DOMAIN", "files.example.com")
+        r = requests.get(
+            f"{static_server.base_url}/anything.txt",
+            headers={"Host": "127.0.0.1:1"},  # port 1 is never open
+            allow_redirects=False,
+        )
+        assert r.status_code == 502
+
+
+# ─────────────────────────────────────────────
+# HTTP verb proxying
+# ─────────────────────────────────────────────
+
+
+class TestHttpVerbProxying:
+
+    @pytest.mark.parametrize("method", ["POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
+    def test_verb_is_proxied(self, static_server, method_upstream_server, monkeypatch, method):
+        monkeypatch.setattr(static_module, "STATIC_DOMAIN", "files.example.com")
+        r = requests.request(
+            method,
+            f"{static_server.base_url}/anything",
+            headers={"Host": f"127.0.0.1:{method_upstream_server.port}"},
+        )
+        assert r.status_code == 200
+        assert r.text == f"{method} OK"
+
+
+# ─────────────────────────────────────────────
+# ALLOWED_DOMAINS filtering
+# ─────────────────────────────────────────────
+
+
+class TestAllowedDomains:
+
+    def test_allowed_domain_is_proxied(self, static_server, upstream_server, monkeypatch):
+        monkeypatch.setattr(static_module, "STATIC_DOMAIN", "files.example.com")
+        monkeypatch.setattr(static_module, "ALLOWED_DOMAINS", [re.compile(r"127\.0\.0\.1")])
+        (upstream_server.root / "hi.txt").write_text("allowed")
+        r = requests.get(
+            f"{static_server.base_url}/hi.txt",
+            headers={"Host": f"127.0.0.1:{upstream_server.port}"},
+            allow_redirects=False,
+        )
+        assert r.status_code == 200
+
+    def test_disallowed_domain_returns_403(self, static_server, monkeypatch):
+        monkeypatch.setattr(static_module, "STATIC_DOMAIN", "files.example.com")
+        monkeypatch.setattr(static_module, "ALLOWED_DOMAINS", [re.compile(r"allowed\.com")])
+        r = requests.get(
             f"{static_server.base_url}/anything",
             headers={"Host": "evil.com"},
             allow_redirects=False,
         )
-        assert r.status_code == 301
-        assert r.headers["Location"] == "https://evil.com/anything"
+        assert r.status_code == 403
 
-    def test_redirect_preserves_path(self, static_server, monkeypatch):
+    def test_no_allowed_domains_configured_proxies_all(self, static_server, upstream_server, monkeypatch):
         monkeypatch.setattr(static_module, "STATIC_DOMAIN", "files.example.com")
+        monkeypatch.setattr(static_module, "ALLOWED_DOMAINS", None)
+        (upstream_server.root / "open.txt").write_text("open")
         r = requests.get(
-            f"{static_server.base_url}/a/b/c.txt",
-            headers={"Host": "other.com"},
+            f"{static_server.base_url}/open.txt",
+            headers={"Host": f"127.0.0.1:{upstream_server.port}"},
             allow_redirects=False,
         )
-        assert r.status_code == 301
-        assert r.headers["Location"] == "https://other.com/a/b/c.txt"
+        assert r.status_code == 200
+
+    def test_wildcard_allowed_domain(self, static_server, upstream_server, monkeypatch):
+        from wonderwall.proxy import _wildcard_to_regex
+        monkeypatch.setattr(static_module, "STATIC_DOMAIN", "files.example.com")
+        monkeypatch.setattr(static_module, "ALLOWED_DOMAINS", [_wildcard_to_regex("127.0.0.*")])
+        (upstream_server.root / "wc.txt").write_text("wildcard")
+        r = requests.get(
+            f"{static_server.base_url}/wc.txt",
+            headers={"Host": f"127.0.0.1:{upstream_server.port}"},
+            allow_redirects=False,
+        )
+        assert r.status_code == 200
+

@@ -5,7 +5,7 @@ import threading
 import time
 from collections import namedtuple
 from functools import partial
-from http.server import HTTPServer
+from http.server import HTTPServer, ThreadingHTTPServer, SimpleHTTPRequestHandler
 
 import pytest
 
@@ -40,7 +40,7 @@ def static_server(tmp_path, monkeypatch):
     monkeypatch.setattr(static_module, "STATIC_DOMAIN", "")
 
     handler = partial(QuietStaticHandler, directory=str(tmp_path))
-    server = HTTPServer(("127.0.0.1", port), handler)
+    server = ThreadingHTTPServer(("127.0.0.1", port), handler)
 
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -48,6 +48,57 @@ def static_server(tmp_path, monkeypatch):
 
     ServerInfo = namedtuple("ServerInfo", ["base_url", "root"])
     yield ServerInfo(base_url=f"http://127.0.0.1:{port}", root=tmp_path)
+
+    server.shutdown()
+    thread.join(timeout=2.0)
+
+
+@pytest.fixture()
+def upstream_server(tmp_path):
+    """Starts a second real HTTPServer on a random port for use as an HTTP upstream."""
+    port = _free_port()
+    root = tmp_path / "upstream"
+    root.mkdir()
+    handler = partial(SimpleHTTPRequestHandler, directory=str(root))
+    server = HTTPServer(("127.0.0.1", port), handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    _wait_for_port(port)
+
+    UpstreamInfo = namedtuple("UpstreamInfo", ["base_url", "root", "port"])
+    yield UpstreamInfo(base_url=f"http://127.0.0.1:{port}", root=root, port=port)
+
+    server.shutdown()
+    thread.join(timeout=2.0)
+
+
+@pytest.fixture()
+def method_upstream_server(tmp_path):
+    """HTTPServer that responds 200 to any HTTP method, echoing the method in the body."""
+    from http.server import BaseHTTPRequestHandler
+
+    class AnyMethodHandler(BaseHTTPRequestHandler):
+        def log_message(self, fmt, *args):
+            pass  # suppress output
+
+        def handle_request(self):
+            body = f"{self.command} OK".encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        do_GET = do_HEAD = do_POST = do_PUT = do_DELETE = do_PATCH = do_OPTIONS = handle_request
+
+    port = _free_port()
+    server = HTTPServer(("127.0.0.1", port), AnyMethodHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    _wait_for_port(port)
+
+    UpstreamInfo = namedtuple("UpstreamInfo", ["base_url", "root", "port"])
+    yield UpstreamInfo(base_url=f"http://127.0.0.1:{port}", root=tmp_path, port=port)
 
     server.shutdown()
     thread.join(timeout=2.0)
