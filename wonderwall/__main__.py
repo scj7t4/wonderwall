@@ -41,9 +41,7 @@ STATIC_DIR = os.getenv("STATIC_DIR", "./static")
 STATIC_HOSTS = {"mystatic.local"}  # HTTP-only, never TLS proxied
 ALLOWED_HOSTS = None  # None = allow any SNI hostname
 UPSTREAM_PORT = int(os.getenv("UPSTREAM_PORT", "443"))
-DNS_A_RECORD_IP = os.getenv("DNS_A_RECORD_IP")
-if not DNS_A_RECORD_IP:
-    raise ValueError("DNS_A_RECORD_IP environment variable is required")
+DNS_A_RECORD_IP = os.getenv("DNS_A_RECORD_IP", None)
 PEEK_BYTES = 512
 
 
@@ -201,6 +199,8 @@ def run_static_server():
 
 async def main():
     configure_logger()
+    if not DNS_A_RECORD_IP:
+        raise ValueError("DNS_A_RECORD_IP environment variable is required")
 
     server = await asyncio.start_server(handle_tls, "0.0.0.0", PROXY_PORT)
     log.info("SNI proxy on :%d", PROXY_PORT)
