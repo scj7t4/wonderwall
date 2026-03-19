@@ -165,6 +165,7 @@ def run_dns_server():
 
     @ns.rule(re.compile(r".*"), ["A"])
     def catch_all_a(query: Query):
+        log.info("Got query for %s", query.name)
         return A(query.name, DNS_A_RECORD_IP)
 
     app = DirectApplication(ns, UDPv4Transport("0.0.0.0", DNS_PORT))
