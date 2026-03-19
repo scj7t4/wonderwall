@@ -10,6 +10,7 @@ from http.server import HTTPServer
 import pytest
 
 import wonderwall.proxy as proxy_module
+import wonderwall.static as static_module
 from wonderwall.static import QuietStaticHandler
 
 
@@ -36,6 +37,7 @@ def static_server(tmp_path, monkeypatch):
     port = _free_port()
     monkeypatch.setenv("HTTP_PORT", str(port))
     monkeypatch.setenv("STATIC_DIR", str(tmp_path))
+    monkeypatch.setattr(static_module, "STATIC_DOMAIN", "")
 
     handler = partial(QuietStaticHandler, directory=str(tmp_path))
     server = HTTPServer(("127.0.0.1", port), handler)

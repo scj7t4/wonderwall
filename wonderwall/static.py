@@ -2,6 +2,7 @@
 
 import logging
 import os
+import socket
 from functools import partial
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
@@ -9,7 +10,7 @@ log = logging.getLogger(__name__)
 
 HTTP_PORT = int(os.getenv("HTTP_PORT", "80"))
 STATIC_DIR = os.getenv("STATIC_DIR", "./static")
-STATIC_DOMAIN = os.getenv("STATIC_DOMAIN", "wonderwall")
+STATIC_DOMAIN = os.getenv("STATIC_DOMAIN", socket.gethostname())
 
 
 class QuietStaticHandler(SimpleHTTPRequestHandler):

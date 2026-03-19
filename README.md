@@ -20,7 +20,7 @@ Returns `DNS_A_RECORD_IP` for every A-record query, causing all hostnames to res
 
 ### Static File Server (`:80`)
 
-Serves files from `STATIC_DIR` using Python's built-in HTTP server. If `STATIC_DOMAIN` is configured, requests for any other host are redirected to HTTPS (`301`) and that domain is also excluded from TLS proxying so it is handled locally instead.
+Serves files from `STATIC_DIR` using Python's built-in HTTP server. `STATIC_DOMAIN` (defaults to the system hostname) controls which host is served over HTTP — requests for any other host are redirected to HTTPS (`301`), and that domain is excluded from TLS proxying so it is handled locally instead.
 
 ## Configuration
 
@@ -32,7 +32,7 @@ All configuration is via environment variables.
 | `DNS_PORT` | `53` | DNS listening port |
 | `HTTP_PORT` | `80` | Static file server listening port |
 | `STATIC_DIR` | `./static` | Directory to serve over HTTP |
-| `STATIC_DOMAIN` | *(none)* | If set, only this domain is served over HTTP; excluded from TLS proxying |
+| `STATIC_DOMAIN` | *(system hostname)* | Only this domain is served over HTTP; excluded from TLS proxying. Set to empty string to disable filtering and static server. |
 | `ALLOWED_HOSTS` | *(allow all)* | Comma-separated regex patterns; only matching SNI hostnames are proxied |
 | `UPSTREAM_PORT` | `443` | Port used when connecting to upstream TLS servers |
 | `LOG_LEVEL` | `INFO` | Logging verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` |

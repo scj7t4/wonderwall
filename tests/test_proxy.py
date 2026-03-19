@@ -405,9 +405,10 @@ class TestStaticDomainEnvVar:
         importlib.reload(m)
         assert m.STATIC_DOMAIN == "mystatic.local"
 
-    def test_module_defaults_static_domain_to_empty(self, monkeypatch):
+    def test_module_defaults_static_domain_to_hostname(self, monkeypatch):
         import importlib
+        import socket
         monkeypatch.delenv("STATIC_DOMAIN", raising=False)
         import wonderwall.proxy as m
         importlib.reload(m)
-        assert m.STATIC_DOMAIN == ""
+        assert m.STATIC_DOMAIN == socket.gethostname()

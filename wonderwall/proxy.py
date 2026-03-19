@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 import re
+import socket
 import struct
 
 log = logging.getLogger(__name__)
@@ -16,7 +17,7 @@ def _parse_allowed_hosts(env_val: str | None) -> list[re.Pattern] | None:
     return [re.compile(p.strip()) for p in env_val.split(",") if p.strip()]
 
 
-STATIC_DOMAIN = os.getenv("STATIC_DOMAIN", "")  # HTTP-only host, never TLS proxied
+STATIC_DOMAIN = os.getenv("STATIC_DOMAIN", socket.gethostname())  # HTTP-only host, never TLS proxied
 ALLOWED_HOSTS = _parse_allowed_hosts(os.getenv("ALLOWED_HOSTS"))  # None = allow any SNI hostname
 UPSTREAM_PORT = int(os.getenv("UPSTREAM_PORT", "443"))
 PEEK_BYTES = 512
