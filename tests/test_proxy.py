@@ -186,12 +186,12 @@ class TestHandleTls:
     def test_closes_for_static_host(self):
         async def _test():
             reader, writer = self._make_client(build_client_hello("mystatic.local"))
-            original = proxy_module.STATIC_HOSTS
+            original = proxy_module.STATIC_DOMAIN
             try:
-                proxy_module.STATIC_HOSTS = {"mystatic.local"}
+                proxy_module.STATIC_DOMAIN = "mystatic.local"
                 await handle_tls(reader, writer)
             finally:
-                proxy_module.STATIC_HOSTS = original
+                proxy_module.STATIC_DOMAIN = original
             writer.close.assert_called_once()
 
         asyncio.run(_test())
@@ -213,15 +213,15 @@ class TestHandleTls:
         async def _test():
             reader, writer = self._make_client(build_client_hello("anything.com"))
             mock_open = AsyncMock(side_effect=ConnectionRefusedError("no upstream in test"))
-            original_allowed, original_static = proxy_module.ALLOWED_HOSTS, proxy_module.STATIC_HOSTS
+            original_allowed, original_static = proxy_module.ALLOWED_HOSTS, proxy_module.STATIC_DOMAIN
             try:
                 proxy_module.ALLOWED_HOSTS = None
-                proxy_module.STATIC_HOSTS = set()
+                proxy_module.STATIC_DOMAIN = ""
                 with patch("asyncio.open_connection", mock_open):
                     await handle_tls(reader, writer)
             finally:
                 proxy_module.ALLOWED_HOSTS = original_allowed
-                proxy_module.STATIC_HOSTS = original_static
+                proxy_module.STATIC_DOMAIN = original_static
             # Connection was attempted (not blocked by host filtering)
             mock_open.assert_called_once_with("anything.com", proxy_module.UPSTREAM_PORT)
 
@@ -231,15 +231,15 @@ class TestHandleTls:
         async def _test():
             reader, writer = self._make_client(build_client_hello("good.com"))
             mock_open = AsyncMock(side_effect=ConnectionRefusedError("no upstream in test"))
-            original_allowed, original_static = proxy_module.ALLOWED_HOSTS, proxy_module.STATIC_HOSTS
+            original_allowed, original_static = proxy_module.ALLOWED_HOSTS, proxy_module.STATIC_DOMAIN
             try:
                 proxy_module.ALLOWED_HOSTS = [re.compile(r"good\.com")]
-                proxy_module.STATIC_HOSTS = set()
+                proxy_module.STATIC_DOMAIN = ""
                 with patch("asyncio.open_connection", mock_open):
                     await handle_tls(reader, writer)
             finally:
                 proxy_module.ALLOWED_HOSTS = original_allowed
-                proxy_module.STATIC_HOSTS = original_static
+                proxy_module.STATIC_DOMAIN = original_static
             mock_open.assert_called_once_with("good.com", proxy_module.UPSTREAM_PORT)
 
         asyncio.run(_test())
@@ -247,10 +247,10 @@ class TestHandleTls:
     def test_closes_when_upstream_connection_fails(self):
         async def _test():
             reader, writer = self._make_client(build_client_hello("unreachable.com"))
-            original_allowed, original_static = proxy_module.ALLOWED_HOSTS, proxy_module.STATIC_HOSTS
+            original_allowed, original_static = proxy_module.ALLOWED_HOSTS, proxy_module.STATIC_DOMAIN
             try:
                 proxy_module.ALLOWED_HOSTS = None
-                proxy_module.STATIC_HOSTS = set()
+                proxy_module.STATIC_DOMAIN = ""
                 with patch(
                     "asyncio.open_connection",
                     side_effect=ConnectionRefusedError("refused"),
@@ -258,7 +258,7 @@ class TestHandleTls:
                     await handle_tls(reader, writer)
             finally:
                 proxy_module.ALLOWED_HOSTS = original_allowed
-                proxy_module.STATIC_HOSTS = original_static
+                proxy_module.STATIC_DOMAIN = original_static
             writer.close.assert_called_once()
 
         asyncio.run(_test())
@@ -283,8 +283,8 @@ class TestTlsProxy:
         assert received == b""
 
     def test_proxy_closes_on_static_host(self, proxy_server, monkeypatch):
-        """SNI hostname in STATIC_HOSTS causes the proxy to close the connection."""
-        monkeypatch.setattr(proxy_module, "STATIC_HOSTS", {"localhost"})
+        """SNI hostname matching STATIC_DOMAIN causes the proxy to close the connection."""
+        monkeypatch.setattr(proxy_module, "STATIC_DOMAIN", "localhost")
         hello = build_client_hello("localhost")
         received = _connect_and_relay(proxy_server.proxy_port, hello)
         assert received == b""
@@ -355,14 +355,14 @@ class TestParseAllowedHosts:
             writer.close = MagicMock()
             writer.drain = AsyncMock()
             writer.write = MagicMock()
-            original_allowed, original_static = proxy_module.ALLOWED_HOSTS, proxy_module.STATIC_HOSTS
+            original_allowed, original_static = proxy_module.ALLOWED_HOSTS, proxy_module.STATIC_DOMAIN
             try:
                 proxy_module.ALLOWED_HOSTS = []
-                proxy_module.STATIC_HOSTS = set()
+                proxy_module.STATIC_DOMAIN = ""
                 await handle_tls(reader, writer)
             finally:
                 proxy_module.ALLOWED_HOSTS = original_allowed
-                proxy_module.STATIC_HOSTS = original_static
+                proxy_module.STATIC_DOMAIN = original_static
             writer.close.assert_called_once()
 
         asyncio.run(_test())
@@ -390,3 +390,24 @@ class TestAllowedHostsEnvVar:
         import wonderwall.proxy as m
         importlib.reload(m)
         assert m.ALLOWED_HOSTS is None
+
+
+# ─────────────────────────────────────────────
+# STATIC_DOMAIN env var loading
+# ─────────────────────────────────────────────
+
+
+class TestStaticDomainEnvVar:
+    def test_module_loads_static_domain_from_env(self, monkeypatch):
+        import importlib
+        monkeypatch.setenv("STATIC_DOMAIN", "mystatic.local")
+        import wonderwall.proxy as m
+        importlib.reload(m)
+        assert m.STATIC_DOMAIN == "mystatic.local"
+
+    def test_module_defaults_static_domain_to_empty(self, monkeypatch):
+        import importlib
+        monkeypatch.delenv("STATIC_DOMAIN", raising=False)
+        import wonderwall.proxy as m
+        importlib.reload(m)
+        assert m.STATIC_DOMAIN == ""

@@ -16,7 +16,7 @@ def _parse_allowed_hosts(env_val: str | None) -> list[re.Pattern] | None:
     return [re.compile(p.strip()) for p in env_val.split(",") if p.strip()]
 
 
-STATIC_HOSTS = {"mystatic.local"}  # HTTP-only, never TLS proxied
+STATIC_DOMAIN = os.getenv("STATIC_DOMAIN", "")  # HTTP-only host, never TLS proxied
 ALLOWED_HOSTS = _parse_allowed_hosts(os.getenv("ALLOWED_HOSTS"))  # None = allow any SNI hostname
 UPSTREAM_PORT = int(os.getenv("UPSTREAM_PORT", "443"))
 PEEK_BYTES = 512
@@ -83,7 +83,7 @@ async def handle_tls(client_r: asyncio.StreamReader, client_w: asyncio.StreamWri
             log.warning("%s: no SNI, closing", addr)
             return
 
-        if hostname in STATIC_HOSTS:
+        if STATIC_DOMAIN and hostname == STATIC_DOMAIN:
             log.warning("%s: %s is HTTP-only, closing", addr, hostname)
             return
 
