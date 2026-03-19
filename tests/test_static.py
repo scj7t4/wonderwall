@@ -101,3 +101,82 @@ class TestStaticFileServing:
         assert all(r.status_code == 200 for r in responses)
         bodies = {r.text for r in responses}
         assert bodies == {"aaa", "bbb"}
+
+
+# ─────────────────────────────────────────────
+# Domain filtering
+# ─────────────────────────────────────────────
+
+
+class TestDomainFiltering:
+
+    def test_no_domain_configured_serves_all(self, static_server, monkeypatch):
+        monkeypatch.setattr(static_module, "STATIC_DOMAIN", "")
+        (static_server.root / "hi.txt").write_text("hello")
+        r = requests.get(
+            f"{static_server.base_url}/hi.txt",
+            headers={"Host": "anything.example.com"},
+            allow_redirects=False,
+        )
+        assert r.status_code == 200
+
+    def test_matching_host_serves_file(self, static_server, monkeypatch):
+        monkeypatch.setattr(static_module, "STATIC_DOMAIN", "files.example.com")
+        (static_server.root / "index.html").write_text("<h1>ok</h1>")
+        r = requests.get(
+            f"{static_server.base_url}/index.html",
+            headers={"Host": "files.example.com"},
+            allow_redirects=False,
+        )
+        assert r.status_code == 200
+
+    def test_wrong_host_redirects_301(self, static_server, monkeypatch):
+        monkeypatch.setattr(static_module, "STATIC_DOMAIN", "files.example.com")
+        (static_server.root / "index.html").write_text("<h1>ok</h1>")
+        r = requests.get(
+            f"{static_server.base_url}/index.html",
+            headers={"Host": "wrong.example.com"},
+            allow_redirects=False,
+        )
+        assert r.status_code == 301
+        assert r.headers["Location"] == "https://wrong.example.com/index.html"
+
+    def test_host_with_port_redirect_preserves_port(self, static_server, monkeypatch):
+        monkeypatch.setattr(static_module, "STATIC_DOMAIN", "files.example.com")
+        r = requests.get(
+            f"{static_server.base_url}/page.html",
+            headers={"Host": "wrong.example.com:8080"},
+            allow_redirects=False,
+        )
+        assert r.status_code == 301
+        assert r.headers["Location"] == "https://wrong.example.com:8080/page.html"
+
+    def test_matching_host_with_port_serves_file(self, static_server, monkeypatch):
+        monkeypatch.setattr(static_module, "STATIC_DOMAIN", "files.example.com")
+        (static_server.root / "doc.txt").write_text("data")
+        r = requests.get(
+            f"{static_server.base_url}/doc.txt",
+            headers={"Host": "files.example.com:9000"},
+            allow_redirects=False,
+        )
+        assert r.status_code == 200
+
+    def test_head_wrong_host_redirects(self, static_server, monkeypatch):
+        monkeypatch.setattr(static_module, "STATIC_DOMAIN", "files.example.com")
+        r = requests.head(
+            f"{static_server.base_url}/anything",
+            headers={"Host": "evil.com"},
+            allow_redirects=False,
+        )
+        assert r.status_code == 301
+        assert r.headers["Location"] == "https://evil.com/anything"
+
+    def test_redirect_preserves_path(self, static_server, monkeypatch):
+        monkeypatch.setattr(static_module, "STATIC_DOMAIN", "files.example.com")
+        r = requests.get(
+            f"{static_server.base_url}/a/b/c.txt",
+            headers={"Host": "other.com"},
+            allow_redirects=False,
+        )
+        assert r.status_code == 301
+        assert r.headers["Location"] == "https://other.com/a/b/c.txt"

@@ -2,11 +2,11 @@ services:
   wonderwall:
     build: .
     environment:
-      DNS_A_RECORD_IP: 172.128.0.128
+      DNS_A_RECORD_IP: ${WONDERWALL_IP:-172.128.0.128}
     networks:
       default: {}
       internal:
-        ipv4_address: 172.128.0.128
+        ipv4_address: ${WONDERWALL_IP:-172.128.0.128}
 
   curl:
     image: curlimages/curl
@@ -14,11 +14,11 @@ services:
     networks:
       - internal
     dns:
-      - 172.128.0.128
+      - ${WONDERWALL_IP:-172.128.0.128}
 
 networks:
   internal:
     internal: true
     ipam:
       config:
-        - subnet: 172.128.0.0/24
+        - subnet: ${INTERNAL_SUBNET:-172.128.0.0/24}
