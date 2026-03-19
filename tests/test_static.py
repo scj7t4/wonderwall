@@ -1,36 +1,33 @@
-"""
-Integration tests for Wonderwall.
+"""Tests for wonderwall static file server (wonderwall/static.py)."""
 
-TestStaticFileServing: starts a real HTTPServer on a random port and uses
-`requests` to verify end-to-end static file serving.
-
-TestTlsProxy: starts a real SNI proxy backed by a loopback echo upstream and
-uses raw sockets + hand-crafted TLS ClientHello packets to verify the proxy
-relays bytes correctly and enforces SNI filtering rules.
-"""
-
-import socket
 from concurrent.futures import ThreadPoolExecutor
+from unittest.mock import MagicMock, patch
 
 import requests
 
-from tests.helpers import build_client_hello
+import wonderwall.static as static_module
+from wonderwall.static import QuietStaticHandler
 
 
-def _connect_and_relay(port: int, data: bytes, timeout: float = 3.0) -> bytes:
-    """Connect to port, send data, signal EOF, return everything received."""
-    with socket.socket() as s:
-        s.settimeout(timeout)
-        s.connect(("127.0.0.1", port))
-        s.sendall(data)
-        s.shutdown(socket.SHUT_WR)
-        received = b""
-        try:
-            while chunk := s.recv(4096):
-                received += chunk
-        except socket.timeout:
-            pass
-        return received
+# ─────────────────────────────────────────────
+# QuietStaticHandler
+# ─────────────────────────────────────────────
+
+
+class TestQuietStaticHandler:
+    def test_log_message_delegates_to_log(self):
+        handler = MagicMock(spec=QuietStaticHandler)
+        handler.address_string = MagicMock(return_value="1.2.3.4")
+
+        with patch.object(static_module, "log") as mock_log:
+            QuietStaticHandler.log_message(handler, "%s %s", "GET", "/index.html")
+
+        mock_log.info.assert_called_once_with("HTTP %s %s", "1.2.3.4", "GET /index.html")
+
+
+# ─────────────────────────────────────────────
+# Integration: static file server
+# ─────────────────────────────────────────────
 
 
 class TestStaticFileServing:
@@ -104,33 +101,3 @@ class TestStaticFileServing:
         assert all(r.status_code == 200 for r in responses)
         bodies = {r.text for r in responses}
         assert bodies == {"aaa", "bbb"}
-
-
-class TestTlsProxy:
-
-    def test_proxy_relays_client_hello(self, proxy_server):
-        """Bytes sent through the proxy are forwarded to upstream and echoed back."""
-        hello = build_client_hello("localhost")
-        received = _connect_and_relay(proxy_server.proxy_port, hello)
-        assert received == hello
-
-    def test_proxy_closes_on_no_sni(self, proxy_server):
-        """Non-TLS data with no SNI causes the proxy to close the connection."""
-        received = _connect_and_relay(proxy_server.proxy_port, b"not tls data at all")
-        assert received == b""
-
-    def test_proxy_closes_on_static_host(self, proxy_server, monkeypatch):
-        """SNI hostname in STATIC_HOSTS causes the proxy to close the connection."""
-        import wonderwall.proxy as proxy_module
-        monkeypatch.setattr(proxy_module, "STATIC_HOSTS", {"localhost"})
-        hello = build_client_hello("localhost")
-        received = _connect_and_relay(proxy_server.proxy_port, hello)
-        assert received == b""
-
-    def test_proxy_closes_on_disallowed_host(self, proxy_server, monkeypatch):
-        """SNI hostname not in ALLOWED_HOSTS causes the proxy to close the connection."""
-        import wonderwall.proxy as proxy_module
-        monkeypatch.setattr(proxy_module, "ALLOWED_HOSTS", {"other.com"})
-        hello = build_client_hello("localhost")
-        received = _connect_and_relay(proxy_server.proxy_port, hello)
-        assert received == b""
