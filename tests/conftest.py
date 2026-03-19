@@ -1,4 +1,5 @@
 import asyncio
+import re
 import socket
 import threading
 import time
@@ -57,7 +58,7 @@ def proxy_server(monkeypatch):
     proxy_port = _free_port()
 
     monkeypatch.setattr(proxy_module, "UPSTREAM_PORT", upstream_port)
-    monkeypatch.setattr(proxy_module, "ALLOWED_HOSTS", {"localhost"})
+    monkeypatch.setattr(proxy_module, "ALLOWED_HOSTS", [re.compile(r"localhost")])
 
     loop = asyncio.new_event_loop()
     servers = {}

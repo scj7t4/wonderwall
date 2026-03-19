@@ -1,11 +1,12 @@
 """Tests for wonderwall TLS SNI proxy (wonderwall/proxy.py)."""
 
 import asyncio
+import re
 import socket
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import wonderwall.proxy as proxy_module
-from wonderwall.proxy import extract_sni, handle_tls, relay
+from wonderwall.proxy import _parse_allowed_hosts, extract_sni, handle_tls, relay
 from tests.helpers import build_client_hello
 
 
@@ -200,7 +201,7 @@ class TestHandleTls:
             reader, writer = self._make_client(build_client_hello("evil.com"))
             original = proxy_module.ALLOWED_HOSTS
             try:
-                proxy_module.ALLOWED_HOSTS = {"good.com"}
+                proxy_module.ALLOWED_HOSTS = [re.compile(r"good\.com")]
                 await handle_tls(reader, writer)
             finally:
                 proxy_module.ALLOWED_HOSTS = original
@@ -232,7 +233,7 @@ class TestHandleTls:
             mock_open = AsyncMock(side_effect=ConnectionRefusedError("no upstream in test"))
             original_allowed, original_static = proxy_module.ALLOWED_HOSTS, proxy_module.STATIC_HOSTS
             try:
-                proxy_module.ALLOWED_HOSTS = {"good.com"}
+                proxy_module.ALLOWED_HOSTS = [re.compile(r"good\.com")]
                 proxy_module.STATIC_HOSTS = set()
                 with patch("asyncio.open_connection", mock_open):
                     await handle_tls(reader, writer)
@@ -290,7 +291,102 @@ class TestTlsProxy:
 
     def test_proxy_closes_on_disallowed_host(self, proxy_server, monkeypatch):
         """SNI hostname not in ALLOWED_HOSTS causes the proxy to close the connection."""
-        monkeypatch.setattr(proxy_module, "ALLOWED_HOSTS", {"other.com"})
+        monkeypatch.setattr(proxy_module, "ALLOWED_HOSTS", [re.compile(r"other\.com")])
         hello = build_client_hello("localhost")
         received = _connect_and_relay(proxy_server.proxy_port, hello)
         assert received == b""
+
+
+# ─────────────────────────────────────────────
+# _parse_allowed_hosts
+# ─────────────────────────────────────────────
+
+
+class TestParseAllowedHosts:
+    def test_returns_none_when_env_not_set(self):
+        assert _parse_allowed_hosts(None) is None
+
+    def test_returns_none_for_empty_string(self):
+        assert _parse_allowed_hosts("") is None
+
+    def test_single_pattern(self):
+        result = _parse_allowed_hosts(r"example\.com")
+        assert result is not None
+        assert len(result) == 1
+
+    def test_multiple_patterns(self):
+        result = _parse_allowed_hosts(r"foo\.com,bar\.com")
+        assert result is not None
+        assert len(result) == 2
+
+    def test_strips_whitespace(self):
+        result = _parse_allowed_hosts(r" foo\.com , bar\.com ")
+        assert result is not None
+        assert len(result) == 2
+
+    def test_pattern_matches_hostname(self):
+        result = _parse_allowed_hosts(r"example\.com")
+        assert result is not None
+        assert result[0].fullmatch("example.com")
+
+    def test_pattern_does_not_match_subdomain(self):
+        result = _parse_allowed_hosts(r"example\.com")
+        assert result is not None
+        assert not result[0].fullmatch("sub.example.com")
+
+    def test_wildcard_pattern_matches_subdomains(self):
+        result = _parse_allowed_hosts(r".*\.example\.com")
+        assert result is not None
+        assert result[0].fullmatch("sub.example.com")
+        assert result[0].fullmatch("api.example.com")
+
+    def test_wildcard_does_not_match_bare_domain(self):
+        result = _parse_allowed_hosts(r".*\.example\.com")
+        assert result is not None
+        assert not result[0].fullmatch("example.com")
+
+    def test_empty_list_blocks_all_hosts(self):
+        async def _test():
+            reader = asyncio.StreamReader()
+            reader.feed_data(build_client_hello("anything.com"))
+            reader.feed_eof()
+            writer = MagicMock()
+            writer.get_extra_info = MagicMock(return_value=("127.0.0.1", 12345))
+            writer.close = MagicMock()
+            writer.drain = AsyncMock()
+            writer.write = MagicMock()
+            original_allowed, original_static = proxy_module.ALLOWED_HOSTS, proxy_module.STATIC_HOSTS
+            try:
+                proxy_module.ALLOWED_HOSTS = []
+                proxy_module.STATIC_HOSTS = set()
+                await handle_tls(reader, writer)
+            finally:
+                proxy_module.ALLOWED_HOSTS = original_allowed
+                proxy_module.STATIC_HOSTS = original_static
+            writer.close.assert_called_once()
+
+        asyncio.run(_test())
+
+
+# ─────────────────────────────────────────────
+# ALLOWED_HOSTS env var loading
+# ─────────────────────────────────────────────
+
+
+class TestAllowedHostsEnvVar:
+    def test_module_loads_allowed_hosts_from_env(self, monkeypatch):
+        import importlib
+        monkeypatch.setenv("ALLOWED_HOSTS", r"example\.com,.*\.internal")
+        import wonderwall.proxy as m
+        importlib.reload(m)
+        assert m.ALLOWED_HOSTS is not None
+        assert len(m.ALLOWED_HOSTS) == 2
+        assert m.ALLOWED_HOSTS[0].fullmatch("example.com")
+        assert m.ALLOWED_HOSTS[1].fullmatch("api.internal")
+
+    def test_module_allows_all_when_env_not_set(self, monkeypatch):
+        import importlib
+        monkeypatch.delenv("ALLOWED_HOSTS", raising=False)
+        import wonderwall.proxy as m
+        importlib.reload(m)
+        assert m.ALLOWED_HOSTS is None

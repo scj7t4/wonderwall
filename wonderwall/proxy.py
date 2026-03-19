@@ -3,12 +3,21 @@
 import asyncio
 import logging
 import os
+import re
 import struct
 
 log = logging.getLogger(__name__)
 
+
+def _parse_allowed_hosts(env_val: str | None) -> list[re.Pattern] | None:
+    """Parse ALLOWED_HOSTS env var into compiled regex patterns, or None to allow all."""
+    if not env_val:
+        return None
+    return [re.compile(p.strip()) for p in env_val.split(",") if p.strip()]
+
+
 STATIC_HOSTS = {"mystatic.local"}  # HTTP-only, never TLS proxied
-ALLOWED_HOSTS = None  # None = allow any SNI hostname
+ALLOWED_HOSTS = _parse_allowed_hosts(os.getenv("ALLOWED_HOSTS"))  # None = allow any SNI hostname
 UPSTREAM_PORT = int(os.getenv("UPSTREAM_PORT", "443"))
 PEEK_BYTES = 512
 
@@ -78,7 +87,7 @@ async def handle_tls(client_r: asyncio.StreamReader, client_w: asyncio.StreamWri
             log.warning("%s: %s is HTTP-only, closing", addr, hostname)
             return
 
-        if ALLOWED_HOSTS and hostname not in ALLOWED_HOSTS:
+        if ALLOWED_HOSTS is not None and not any(p.fullmatch(hostname) for p in ALLOWED_HOSTS):
             log.warning("%s: %s not in allowed hosts, closing", addr, hostname)
             return
 
