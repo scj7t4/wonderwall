@@ -12,8 +12,8 @@ import os
 import threading
 
 from wonderwall.dns import run_dns_server
-from wonderwall.proxy import handle_tls
-from wonderwall.static import run_static_server
+from wonderwall.https_proxy import handle_tls
+from wonderwall.http_proxy import run_static_server
 
 log = logging.getLogger(__name__)
 

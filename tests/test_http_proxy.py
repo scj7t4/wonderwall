@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
-import wonderwall.static as static_module
-from wonderwall.static import QuietStaticHandler
+import wonderwall.http_proxy as static_module
+from wonderwall.http_proxy import QuietStaticHandler
 
 
 # ─────────────────────────────────────────────
@@ -263,7 +263,7 @@ class TestAllowedDomains:
         assert r.status_code == 200
 
     def test_wildcard_allowed_domain(self, static_server, upstream_server, monkeypatch):
-        from wonderwall.proxy import _wildcard_to_regex
+        from wonderwall.https_proxy import _wildcard_to_regex
         monkeypatch.setattr(static_module, "STATIC_DOMAIN", "files.example.com")
         monkeypatch.setattr(static_module, "ALLOWED_DOMAINS", [_wildcard_to_regex("127.0.0.*")])
         (upstream_server.root / "wc.txt").write_text("wildcard")

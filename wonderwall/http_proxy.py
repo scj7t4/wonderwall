@@ -7,7 +7,7 @@ import socket
 from functools import partial
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 
-from wonderwall.proxy import _parse_allowed_hosts
+from wonderwall.https_proxy import _parse_allowed_hosts
 
 log = logging.getLogger(__name__)
 

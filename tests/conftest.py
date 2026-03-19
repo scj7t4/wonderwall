@@ -9,9 +9,9 @@ from http.server import HTTPServer, ThreadingHTTPServer, SimpleHTTPRequestHandle
 
 import pytest
 
-import wonderwall.proxy as proxy_module
-import wonderwall.static as static_module
-from wonderwall.static import QuietStaticHandler
+import wonderwall.https_proxy as proxy_module
+import wonderwall.http_proxy as static_module
+from wonderwall.http_proxy import QuietStaticHandler
 
 
 def _free_port() -> int:

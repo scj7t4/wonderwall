@@ -5,8 +5,8 @@ import re
 import socket
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import wonderwall.proxy as proxy_module
-from wonderwall.proxy import _parse_allowed_hosts, _wildcard_to_regex, extract_sni, handle_tls, relay
+import wonderwall.https_proxy as proxy_module
+from wonderwall.https_proxy import _parse_allowed_hosts, _wildcard_to_regex, extract_sni, handle_tls, relay
 from tests.helpers import build_client_hello
 
 
@@ -398,7 +398,7 @@ class TestAllowedHostsEnvVar:
     def test_module_loads_allowed_hosts_from_env(self, monkeypatch):
         import importlib
         monkeypatch.setenv("ALLOWED_HOSTS", "example.com,*.internal")
-        import wonderwall.proxy as m
+        import wonderwall.https_proxy as m
         importlib.reload(m)
         assert m.ALLOWED_HOSTS is not None
         assert len(m.ALLOWED_HOSTS) == 2
@@ -408,7 +408,7 @@ class TestAllowedHostsEnvVar:
     def test_module_allows_all_when_env_not_set(self, monkeypatch):
         import importlib
         monkeypatch.delenv("ALLOWED_HOSTS", raising=False)
-        import wonderwall.proxy as m
+        import wonderwall.https_proxy as m
         importlib.reload(m)
         assert m.ALLOWED_HOSTS is None
 
@@ -422,7 +422,7 @@ class TestStaticDomainEnvVar:
     def test_module_loads_static_domain_from_env(self, monkeypatch):
         import importlib
         monkeypatch.setenv("STATIC_DOMAIN", "mystatic.local")
-        import wonderwall.proxy as m
+        import wonderwall.https_proxy as m
         importlib.reload(m)
         assert m.STATIC_DOMAIN == "mystatic.local"
 
@@ -430,6 +430,6 @@ class TestStaticDomainEnvVar:
         import importlib
         import socket
         monkeypatch.delenv("STATIC_DOMAIN", raising=False)
-        import wonderwall.proxy as m
+        import wonderwall.https_proxy as m
         importlib.reload(m)
         assert m.STATIC_DOMAIN == socket.gethostname()
