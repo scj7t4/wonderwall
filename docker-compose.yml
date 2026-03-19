@@ -1,6 +1,8 @@
 services:
   wonderwall:
     build: .
+    environment:
+      DNS_A_RECORD_IP: 172.128.0.128
     networks:
       default: {}
       internal:
@@ -11,9 +13,8 @@ services:
     command: sleep infinity
     networks:
       - internal
-    extra_hosts:
-      - "www.google.com:172.128.0.128"
-      - "mystatic.local:172.128.0.128"
+    dns:
+      - 172.128.0.128
 
 networks:
   internal:

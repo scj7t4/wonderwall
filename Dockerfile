@@ -2,9 +2,11 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
+COPY pyproject.toml ./
 COPY wonderwall/ ./wonderwall/
 
-RUN mkdir -p static && \
+RUN pip install --no-cache-dir . && \
+    mkdir -p static && \
     useradd -r -u 999 appuser && \
     chown -R appuser:appuser /app
 

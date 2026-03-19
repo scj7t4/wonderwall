@@ -10,7 +10,6 @@ import asyncio
 import logging
 import os
 import re
-import socket
 import struct
 import threading
 from functools import partial
@@ -42,6 +41,9 @@ STATIC_DIR = os.getenv("STATIC_DIR", "./static")
 STATIC_HOSTS = {"mystatic.local"}  # HTTP-only, never TLS proxied
 ALLOWED_HOSTS = None  # None = allow any SNI hostname
 UPSTREAM_PORT = int(os.getenv("UPSTREAM_PORT", "443"))
+DNS_A_RECORD_IP = os.getenv("DNS_A_RECORD_IP")
+if not DNS_A_RECORD_IP:
+    raise ValueError("DNS_A_RECORD_IP environment variable is required")
 PEEK_BYTES = 512
 
 
@@ -161,15 +163,14 @@ async def handle_tls(client_r: asyncio.StreamReader, client_w: asyncio.StreamWri
 
 
 def run_dns_server():
-    server_ip = os.getenv("SERVER_IP", socket.gethostbyname(socket.gethostname()))
     ns = NameServer("wonderwall")
 
     @ns.rule(re.compile(r".*"), ["A"])
     def catch_all_a(query: Query):
-        return A(query.name, server_ip)
+        return A(query.name, DNS_A_RECORD_IP)
 
     app = DirectApplication(ns, UDPv4Transport("0.0.0.0", DNS_PORT))
-    log.info("DNS server on :%d, resolving A queries to %s", DNS_PORT, server_ip)
+    log.info("DNS server on :%d, resolving A queries to %s", DNS_PORT, DNS_A_RECORD_IP)
     app.run()
 
 
