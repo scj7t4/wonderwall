@@ -10,11 +10,29 @@ import struct
 log = logging.getLogger(__name__)
 
 
+def _escape_with_single_wildcards(s: str) -> str:
+    """Escape s for regex, replacing * with [^.]* (matches within one label only)."""
+    return r"[^.]*".join(re.escape(part) for part in s.split("*"))
+
+
+def _wildcard_to_regex(pattern: str) -> re.Pattern:
+    """Convert a wildcard host pattern to a compiled regex for fullmatch.
+
+    '*.foo.com' (leading *.) matches any number of subdomain levels.
+    'pre*.foo.com' (* within a label) matches only within that single label (no dots).
+    """
+    if pattern.startswith("*."):
+        regex = r".+\." + _escape_with_single_wildcards(pattern[2:])
+    else:
+        regex = _escape_with_single_wildcards(pattern)
+    return re.compile(regex)
+
+
 def _parse_allowed_hosts(env_val: str | None) -> list[re.Pattern] | None:
-    """Parse ALLOWED_HOSTS env var into compiled regex patterns, or None to allow all."""
+    """Parse ALLOWED_HOSTS env var into compiled wildcard patterns, or None to allow all."""
     if not env_val:
         return None
-    return [re.compile(p.strip()) for p in env_val.split(",") if p.strip()]
+    return [_wildcard_to_regex(p.strip()) for p in env_val.split(",") if p.strip()]
 
 
 STATIC_DOMAIN = os.getenv("STATIC_DOMAIN", socket.gethostname())  # HTTP-only host, never TLS proxied

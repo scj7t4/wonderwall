@@ -6,7 +6,7 @@ import socket
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import wonderwall.proxy as proxy_module
-from wonderwall.proxy import _parse_allowed_hosts, extract_sni, handle_tls, relay
+from wonderwall.proxy import _parse_allowed_hosts, _wildcard_to_regex, extract_sni, handle_tls, relay
 from tests.helpers import build_client_hello
 
 
@@ -201,7 +201,7 @@ class TestHandleTls:
             reader, writer = self._make_client(build_client_hello("evil.com"))
             original = proxy_module.ALLOWED_HOSTS
             try:
-                proxy_module.ALLOWED_HOSTS = [re.compile(r"good\.com")]
+                proxy_module.ALLOWED_HOSTS = [_wildcard_to_regex("good.com")]
                 await handle_tls(reader, writer)
             finally:
                 proxy_module.ALLOWED_HOSTS = original
@@ -233,7 +233,7 @@ class TestHandleTls:
             mock_open = AsyncMock(side_effect=ConnectionRefusedError("no upstream in test"))
             original_allowed, original_static = proxy_module.ALLOWED_HOSTS, proxy_module.STATIC_DOMAIN
             try:
-                proxy_module.ALLOWED_HOSTS = [re.compile(r"good\.com")]
+                proxy_module.ALLOWED_HOSTS = [_wildcard_to_regex("good.com")]
                 proxy_module.STATIC_DOMAIN = ""
                 with patch("asyncio.open_connection", mock_open):
                     await handle_tls(reader, writer)
@@ -291,7 +291,7 @@ class TestTlsProxy:
 
     def test_proxy_closes_on_disallowed_host(self, proxy_server, monkeypatch):
         """SNI hostname not in ALLOWED_HOSTS causes the proxy to close the connection."""
-        monkeypatch.setattr(proxy_module, "ALLOWED_HOSTS", [re.compile(r"other\.com")])
+        monkeypatch.setattr(proxy_module, "ALLOWED_HOSTS", [_wildcard_to_regex("other.com")])
         hello = build_client_hello("localhost")
         received = _connect_and_relay(proxy_server.proxy_port, hello)
         assert received == b""
@@ -310,40 +310,61 @@ class TestParseAllowedHosts:
         assert _parse_allowed_hosts("") is None
 
     def test_single_pattern(self):
-        result = _parse_allowed_hosts(r"example\.com")
+        result = _parse_allowed_hosts("example.com")
         assert result is not None
         assert len(result) == 1
 
     def test_multiple_patterns(self):
-        result = _parse_allowed_hosts(r"foo\.com,bar\.com")
+        result = _parse_allowed_hosts("foo.com,bar.com")
         assert result is not None
         assert len(result) == 2
 
     def test_strips_whitespace(self):
-        result = _parse_allowed_hosts(r" foo\.com , bar\.com ")
+        result = _parse_allowed_hosts(" foo.com , bar.com ")
         assert result is not None
         assert len(result) == 2
 
-    def test_pattern_matches_hostname(self):
-        result = _parse_allowed_hosts(r"example\.com")
+    def test_exact_pattern_matches_hostname(self):
+        result = _parse_allowed_hosts("example.com")
         assert result is not None
         assert result[0].fullmatch("example.com")
 
-    def test_pattern_does_not_match_subdomain(self):
-        result = _parse_allowed_hosts(r"example\.com")
+    def test_exact_pattern_does_not_match_subdomain(self):
+        result = _parse_allowed_hosts("example.com")
         assert result is not None
         assert not result[0].fullmatch("sub.example.com")
 
-    def test_wildcard_pattern_matches_subdomains(self):
-        result = _parse_allowed_hosts(r".*\.example\.com")
+    def test_leading_wildcard_matches_single_level_subdomain(self):
+        result = _parse_allowed_hosts("*.example.com")
         assert result is not None
-        assert result[0].fullmatch("sub.example.com")
-        assert result[0].fullmatch("api.example.com")
+        assert result[0].fullmatch("something.example.com")
 
-    def test_wildcard_does_not_match_bare_domain(self):
-        result = _parse_allowed_hosts(r".*\.example\.com")
+    def test_leading_wildcard_matches_multi_level_subdomain(self):
+        result = _parse_allowed_hosts("*.example.com")
+        assert result is not None
+        assert result[0].fullmatch("something.anotherthing.example.com")
+
+    def test_leading_wildcard_does_not_match_bare_domain(self):
+        result = _parse_allowed_hosts("*.example.com")
         assert result is not None
         assert not result[0].fullmatch("example.com")
+
+    def test_inline_wildcard_matches_single_label(self):
+        result = _parse_allowed_hosts("some*.blah.com")
+        assert result is not None
+        assert result[0].fullmatch("something.blah.com")
+
+    def test_inline_wildcard_does_not_match_across_labels(self):
+        result = _parse_allowed_hosts("some*.blah.com")
+        assert result is not None
+        assert not result[0].fullmatch("something.anotherthing.blah.com")
+
+    def test_multiple_patterns_match_as_or(self):
+        result = _parse_allowed_hosts("good.com,*.internal.net")
+        assert result is not None
+        assert any(p.fullmatch("good.com") for p in result)
+        assert any(p.fullmatch("api.internal.net") for p in result)
+        assert not any(p.fullmatch("evil.com") for p in result)
 
     def test_empty_list_blocks_all_hosts(self):
         async def _test():
@@ -376,7 +397,7 @@ class TestParseAllowedHosts:
 class TestAllowedHostsEnvVar:
     def test_module_loads_allowed_hosts_from_env(self, monkeypatch):
         import importlib
-        monkeypatch.setenv("ALLOWED_HOSTS", r"example\.com,.*\.internal")
+        monkeypatch.setenv("ALLOWED_HOSTS", "example.com,*.internal")
         import wonderwall.proxy as m
         importlib.reload(m)
         assert m.ALLOWED_HOSTS is not None

@@ -33,7 +33,7 @@ All configuration is via environment variables.
 | `HTTP_PORT` | `80` | Static file server listening port |
 | `STATIC_DIR` | `./static` | Directory to serve over HTTP |
 | `STATIC_DOMAIN` | *(system hostname)* | Only this domain is served over HTTP; excluded from TLS proxying. Set to empty string to disable filtering and static server. |
-| `ALLOWED_HOSTS` | *(allow all)* | Comma-separated regex patterns; only matching SNI hostnames are proxied |
+| `ALLOWED_HOSTS` | *(allow all)* | Comma-separated wildcard patterns; only matching SNI hostnames are proxied. `*.example.com` matches subdomains at any depth; `pre*.example.com` matches within a single label only. |
 | `UPSTREAM_PORT` | `443` | Port used when connecting to upstream TLS servers |
 | `LOG_LEVEL` | `INFO` | Logging verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` |
 
