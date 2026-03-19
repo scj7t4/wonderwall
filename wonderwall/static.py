@@ -9,7 +9,7 @@ log = logging.getLogger(__name__)
 
 HTTP_PORT = int(os.getenv("HTTP_PORT", "80"))
 STATIC_DIR = os.getenv("STATIC_DIR", "./static")
-STATIC_DOMAIN = os.getenv("STATIC_DOMAIN", "")
+STATIC_DOMAIN = os.getenv("STATIC_DOMAIN", "wonderwall")
 
 
 class QuietStaticHandler(SimpleHTTPRequestHandler):
