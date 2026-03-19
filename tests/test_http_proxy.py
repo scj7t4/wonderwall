@@ -8,21 +8,21 @@ import pytest
 import requests
 
 import wonderwall.http_proxy as static_module
-from wonderwall.http_proxy import QuietStaticHandler
+from wonderwall.http_proxy import HttpProxyHandler
 
 
 # ─────────────────────────────────────────────
-# QuietStaticHandler
+# HttpProxyHandler
 # ─────────────────────────────────────────────
 
 
-class TestQuietStaticHandler:
+class TestHttpProxyHandler:
     def test_log_message_delegates_to_log(self):
-        handler = MagicMock(spec=QuietStaticHandler)
+        handler = MagicMock(spec=HttpProxyHandler)
         handler.address_string = MagicMock(return_value="1.2.3.4")
 
         with patch.object(static_module, "log") as mock_log:
-            QuietStaticHandler.log_message(handler, "%s %s", "GET", "/index.html")
+            HttpProxyHandler.log_message(handler, "%s %s", "GET", "/index.html")
 
         mock_log.info.assert_called_once_with("HTTP %s %s", "1.2.3.4", "GET /index.html")
 

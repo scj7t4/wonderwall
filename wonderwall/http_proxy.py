@@ -23,7 +23,7 @@ _HOP_BY_HOP = frozenset({
 })
 
 
-class QuietStaticHandler(SimpleHTTPRequestHandler):
+class HttpProxyHandler(SimpleHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def log_message(self, fmt, *args):
@@ -113,7 +113,7 @@ class QuietStaticHandler(SimpleHTTPRequestHandler):
 
 def run_static_server():
     os.makedirs(STATIC_DIR, exist_ok=True)
-    handler = partial(QuietStaticHandler, directory=STATIC_DIR)
+    handler = partial(HttpProxyHandler, directory=STATIC_DIR)
     httpd = ThreadingHTTPServer(("0.0.0.0", HTTP_PORT), handler)
     log.info(
         "Static server on :%d serving '%s'", HTTP_PORT, os.path.abspath(STATIC_DIR)

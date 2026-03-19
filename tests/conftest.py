@@ -11,7 +11,7 @@ import pytest
 
 import wonderwall.https_proxy as proxy_module
 import wonderwall.http_proxy as static_module
-from wonderwall.http_proxy import QuietStaticHandler
+from wonderwall.http_proxy import HttpProxyHandler
 
 
 def _free_port() -> int:
@@ -39,7 +39,7 @@ def static_server(tmp_path, monkeypatch):
     monkeypatch.setenv("STATIC_DIR", str(tmp_path))
     monkeypatch.setattr(static_module, "STATIC_DOMAIN", "")
 
-    handler = partial(QuietStaticHandler, directory=str(tmp_path))
+    handler = partial(HttpProxyHandler, directory=str(tmp_path))
     server = ThreadingHTTPServer(("127.0.0.1", port), handler)
 
     thread = threading.Thread(target=server.serve_forever, daemon=True)
