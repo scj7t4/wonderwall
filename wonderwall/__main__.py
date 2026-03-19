@@ -31,8 +31,8 @@ def configure_logger():
 # ─────────────────────────────────────────────
 
 PROXY_PORT = 443
-HTTP_PORT = 80
-STATIC_DIR = "./static"
+HTTP_PORT = int(os.getenv("HTTP_PORT", "80"))
+STATIC_DIR = os.getenv("STATIC_DIR", "./static")
 STATIC_HOSTS = {"mystatic.local"}  # HTTP-only, never TLS proxied
 ALLOWED_HOSTS = None  # None = allow any SNI hostname
 UPSTREAM_PORT = 443

@@ -1,0 +1,23 @@
+services:
+  wonderwall:
+    build: .
+    networks:
+      default: {}
+      internal:
+        ipv4_address: 172.128.0.128
+
+  curl:
+    image: curlimages/curl
+    command: sleep infinity
+    networks:
+      - internal
+    extra_hosts:
+      - "www.google.com:172.128.0.128"
+      - "mystatic.local:172.128.0.128"
+
+networks:
+  internal:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.128.0.0/24
