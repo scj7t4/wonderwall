@@ -35,7 +35,7 @@ HTTP_PORT = int(os.getenv("HTTP_PORT", "80"))
 STATIC_DIR = os.getenv("STATIC_DIR", "./static")
 STATIC_HOSTS = {"mystatic.local"}  # HTTP-only, never TLS proxied
 ALLOWED_HOSTS = None  # None = allow any SNI hostname
-UPSTREAM_PORT = 443
+UPSTREAM_PORT = int(os.getenv("UPSTREAM_PORT", "443"))
 PEEK_BYTES = 512
 
 
@@ -121,15 +121,22 @@ async def handle_tls(client_r: asyncio.StreamReader, client_w: asyncio.StreamWri
         log.info("%s → %s", addr, hostname)
         upstream_r, upstream_w = await asyncio.open_connection(hostname, UPSTREAM_PORT)
 
-        # Feed the peeked bytes into a fresh reader so the upstream gets the
-        # complete unmodified ClientHello as its very first bytes.
-        prepend_r = asyncio.StreamReader()
-        prepend_r.feed_data(peeked)
-
-        # Chain: prepend_r is drained first, then client_r continues naturally.
+        # Forward client data upstream. Use write_eof() instead of close() so
+        # upstream_r stays open to receive the upstream's response.
         async def client_to_upstream():
-            await relay(prepend_r, upstream_w)  # flush peeked bytes first
-            await relay(client_r, upstream_w)  # then stream the rest
+            try:
+                upstream_w.write(peeked)
+                await upstream_w.drain()
+                while data := await client_r.read(4096):
+                    upstream_w.write(data)
+                    await upstream_w.drain()
+            except Exception:
+                pass
+            finally:
+                try:
+                    upstream_w.write_eof()
+                except Exception:
+                    pass
 
         await asyncio.gather(
             client_to_upstream(),

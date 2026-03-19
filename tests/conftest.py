@@ -1,6 +1,8 @@
+import asyncio
 import socket
 import threading
 import time
+from collections import namedtuple
 from functools import partial
 from http.server import HTTPServer
 
@@ -40,9 +42,62 @@ def static_server(tmp_path, monkeypatch):
     thread.start()
     _wait_for_port(port)
 
-    from collections import namedtuple
     ServerInfo = namedtuple("ServerInfo", ["base_url", "root"])
     yield ServerInfo(base_url=f"http://127.0.0.1:{port}", root=tmp_path)
 
     server.shutdown()
     thread.join(timeout=2.0)
+
+
+@pytest.fixture()
+def proxy_server(monkeypatch):
+    """Starts a real SNI proxy backed by an echo upstream, both on random ports."""
+    import wonderwall.__main__ as ww
+
+    upstream_port = _free_port()
+    proxy_port = _free_port()
+
+    monkeypatch.setattr(ww, "UPSTREAM_PORT", upstream_port)
+    monkeypatch.setattr(ww, "ALLOWED_HOSTS", {"localhost"})
+
+    loop = asyncio.new_event_loop()
+    servers = {}
+
+    async def echo_handler(reader, writer):
+        try:
+            while data := await reader.read(4096):
+                writer.write(data)
+                await writer.drain()
+        except Exception:
+            pass
+        finally:
+            try:
+                writer.close()
+            except Exception:
+                pass
+
+    async def start():
+        servers["upstream"] = await asyncio.start_server(
+            echo_handler, "", upstream_port  # all interfaces: works for both 127.0.0.1 and ::1
+        )
+        servers["proxy"] = await asyncio.start_server(
+            ww.handle_tls, "127.0.0.1", proxy_port
+        )
+
+    loop.run_until_complete(start())
+    thread = threading.Thread(target=loop.run_forever, daemon=True)
+    thread.start()
+    _wait_for_port(proxy_port)
+
+    ProxyInfo = namedtuple("ProxyInfo", ["proxy_port", "upstream_port"])
+    yield ProxyInfo(proxy_port=proxy_port, upstream_port=upstream_port)
+
+    async def stop():
+        for s in servers.values():
+            s.close()
+            await s.wait_closed()
+
+    asyncio.run_coroutine_threadsafe(stop(), loop).result(timeout=5.0)
+    loop.call_soon_threadsafe(loop.stop)
+    thread.join(timeout=2.0)
+    loop.close()
