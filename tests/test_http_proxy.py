@@ -112,15 +112,14 @@ class TestStaticFileServing:
 
 class TestDomainFiltering:
 
-    def test_no_domain_configured_serves_all(self, static_server, monkeypatch):
+    def test_no_domain_configured_proxies_all(self, static_server, monkeypatch):
         monkeypatch.setattr(static_module, "STATIC_DOMAIN", "")
-        (static_server.root / "hi.txt").write_text("hello")
         r = requests.get(
             f"{static_server.base_url}/hi.txt",
-            headers={"Host": "anything.example.com"},
+            headers={"Host": "unreachable.invalid"},
             allow_redirects=False,
         )
-        assert r.status_code == 200
+        assert r.status_code == 502
 
     def test_matching_host_serves_file(self, static_server, monkeypatch):
         monkeypatch.setattr(static_module, "STATIC_DOMAIN", "files.example.com")

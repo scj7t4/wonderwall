@@ -37,7 +37,7 @@ def static_server(tmp_path, monkeypatch):
     port = _free_port()
     monkeypatch.setenv("HTTP_PORT", str(port))
     monkeypatch.setenv("STATIC_DIR", str(tmp_path))
-    monkeypatch.setattr(static_module, "STATIC_DOMAIN", "")
+    monkeypatch.setattr(static_module, "STATIC_DOMAIN", "127.0.0.1")
 
     handler = partial(HttpProxyHandler, directory=str(tmp_path))
     server = ThreadingHTTPServer(("127.0.0.1", port), handler)

@@ -84,13 +84,13 @@ class HttpProxyHandler(SimpleHTTPRequestHandler):
                 self.wfile.write(err_body)
 
     def do_GET(self):
-        if not STATIC_DOMAIN or self.headers.get("Host", "").split(":")[0] == STATIC_DOMAIN:
+        if STATIC_DOMAIN and self.headers.get("Host", "").split(":")[0] == STATIC_DOMAIN:
             super().do_GET()
         else:
             self._proxy_request("GET")
 
     def do_HEAD(self):
-        if not STATIC_DOMAIN or self.headers.get("Host", "").split(":")[0] == STATIC_DOMAIN:
+        if STATIC_DOMAIN and self.headers.get("Host", "").split(":")[0] == STATIC_DOMAIN:
             super().do_HEAD()
         else:
             self._proxy_request("HEAD")
