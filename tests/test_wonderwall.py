@@ -5,14 +5,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-import wonderwall.__main__ as ww
-from wonderwall.__main__ import (
-    QuietStaticHandler,
-    configure_logger,
-    extract_sni,
-    handle_tls,
-    relay,
-)
+import wonderwall.proxy as proxy_module
+import wonderwall.static as static_module
+from wonderwall.__main__ import configure_logger
+from wonderwall.proxy import extract_sni, handle_tls, relay
+from wonderwall.static import QuietStaticHandler
 from tests.helpers import build_client_hello
 
 
@@ -176,12 +173,12 @@ class TestHandleTls:
     def test_closes_for_static_host(self):
         async def _test():
             reader, writer = self._make_client(build_client_hello("mystatic.local"))
-            original = ww.STATIC_HOSTS
+            original = proxy_module.STATIC_HOSTS
             try:
-                ww.STATIC_HOSTS = {"mystatic.local"}
+                proxy_module.STATIC_HOSTS = {"mystatic.local"}
                 await handle_tls(reader, writer)
             finally:
-                ww.STATIC_HOSTS = original
+                proxy_module.STATIC_HOSTS = original
             writer.close.assert_called_once()
 
         asyncio.run(_test())
@@ -189,12 +186,12 @@ class TestHandleTls:
     def test_closes_for_disallowed_host(self):
         async def _test():
             reader, writer = self._make_client(build_client_hello("evil.com"))
-            original = ww.ALLOWED_HOSTS
+            original = proxy_module.ALLOWED_HOSTS
             try:
-                ww.ALLOWED_HOSTS = {"good.com"}
+                proxy_module.ALLOWED_HOSTS = {"good.com"}
                 await handle_tls(reader, writer)
             finally:
-                ww.ALLOWED_HOSTS = original
+                proxy_module.ALLOWED_HOSTS = original
             writer.close.assert_called_once()
 
         asyncio.run(_test())
@@ -203,17 +200,17 @@ class TestHandleTls:
         async def _test():
             reader, writer = self._make_client(build_client_hello("anything.com"))
             mock_open = AsyncMock(side_effect=ConnectionRefusedError("no upstream in test"))
-            original_allowed, original_static = ww.ALLOWED_HOSTS, ww.STATIC_HOSTS
+            original_allowed, original_static = proxy_module.ALLOWED_HOSTS, proxy_module.STATIC_HOSTS
             try:
-                ww.ALLOWED_HOSTS = None
-                ww.STATIC_HOSTS = set()
+                proxy_module.ALLOWED_HOSTS = None
+                proxy_module.STATIC_HOSTS = set()
                 with patch("asyncio.open_connection", mock_open):
                     await handle_tls(reader, writer)
             finally:
-                ww.ALLOWED_HOSTS = original_allowed
-                ww.STATIC_HOSTS = original_static
+                proxy_module.ALLOWED_HOSTS = original_allowed
+                proxy_module.STATIC_HOSTS = original_static
             # Connection was attempted (not blocked by host filtering)
-            mock_open.assert_called_once_with("anything.com", ww.UPSTREAM_PORT)
+            mock_open.assert_called_once_with("anything.com", proxy_module.UPSTREAM_PORT)
 
         asyncio.run(_test())
 
@@ -221,34 +218,34 @@ class TestHandleTls:
         async def _test():
             reader, writer = self._make_client(build_client_hello("good.com"))
             mock_open = AsyncMock(side_effect=ConnectionRefusedError("no upstream in test"))
-            original_allowed, original_static = ww.ALLOWED_HOSTS, ww.STATIC_HOSTS
+            original_allowed, original_static = proxy_module.ALLOWED_HOSTS, proxy_module.STATIC_HOSTS
             try:
-                ww.ALLOWED_HOSTS = {"good.com"}
-                ww.STATIC_HOSTS = set()
+                proxy_module.ALLOWED_HOSTS = {"good.com"}
+                proxy_module.STATIC_HOSTS = set()
                 with patch("asyncio.open_connection", mock_open):
                     await handle_tls(reader, writer)
             finally:
-                ww.ALLOWED_HOSTS = original_allowed
-                ww.STATIC_HOSTS = original_static
-            mock_open.assert_called_once_with("good.com", ww.UPSTREAM_PORT)
+                proxy_module.ALLOWED_HOSTS = original_allowed
+                proxy_module.STATIC_HOSTS = original_static
+            mock_open.assert_called_once_with("good.com", proxy_module.UPSTREAM_PORT)
 
         asyncio.run(_test())
 
     def test_closes_when_upstream_connection_fails(self):
         async def _test():
             reader, writer = self._make_client(build_client_hello("unreachable.com"))
-            original_allowed, original_static = ww.ALLOWED_HOSTS, ww.STATIC_HOSTS
+            original_allowed, original_static = proxy_module.ALLOWED_HOSTS, proxy_module.STATIC_HOSTS
             try:
-                ww.ALLOWED_HOSTS = None
-                ww.STATIC_HOSTS = set()
+                proxy_module.ALLOWED_HOSTS = None
+                proxy_module.STATIC_HOSTS = set()
                 with patch(
                     "asyncio.open_connection",
                     side_effect=ConnectionRefusedError("refused"),
                 ):
                     await handle_tls(reader, writer)
             finally:
-                ww.ALLOWED_HOSTS = original_allowed
-                ww.STATIC_HOSTS = original_static
+                proxy_module.ALLOWED_HOSTS = original_allowed
+                proxy_module.STATIC_HOSTS = original_static
             writer.close.assert_called_once()
 
         asyncio.run(_test())
@@ -292,7 +289,7 @@ class TestQuietStaticHandler:
         handler = MagicMock(spec=QuietStaticHandler)
         handler.address_string = MagicMock(return_value="1.2.3.4")
 
-        with patch.object(ww, "log") as mock_log:
+        with patch.object(static_module, "log") as mock_log:
             QuietStaticHandler.log_message(handler, "%s %s", "GET", "/index.html")
 
         mock_log.info.assert_called_once_with("HTTP %s %s", "1.2.3.4", "GET /index.html")

@@ -8,7 +8,8 @@ from http.server import HTTPServer
 
 import pytest
 
-from wonderwall.__main__ import QuietStaticHandler
+import wonderwall.proxy as proxy_module
+from wonderwall.static import QuietStaticHandler
 
 
 def _free_port() -> int:
@@ -52,13 +53,11 @@ def static_server(tmp_path, monkeypatch):
 @pytest.fixture()
 def proxy_server(monkeypatch):
     """Starts a real SNI proxy backed by an echo upstream, both on random ports."""
-    import wonderwall.__main__ as ww
-
     upstream_port = _free_port()
     proxy_port = _free_port()
 
-    monkeypatch.setattr(ww, "UPSTREAM_PORT", upstream_port)
-    monkeypatch.setattr(ww, "ALLOWED_HOSTS", {"localhost"})
+    monkeypatch.setattr(proxy_module, "UPSTREAM_PORT", upstream_port)
+    monkeypatch.setattr(proxy_module, "ALLOWED_HOSTS", {"localhost"})
 
     loop = asyncio.new_event_loop()
     servers = {}
@@ -81,7 +80,7 @@ def proxy_server(monkeypatch):
             echo_handler, "", upstream_port  # all interfaces: works for both 127.0.0.1 and ::1
         )
         servers["proxy"] = await asyncio.start_server(
-            ww.handle_tls, "127.0.0.1", proxy_port
+            proxy_module.handle_tls, "127.0.0.1", proxy_port
         )
 
     loop.run_until_complete(start())

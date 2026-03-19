@@ -121,16 +121,16 @@ class TestTlsProxy:
 
     def test_proxy_closes_on_static_host(self, proxy_server, monkeypatch):
         """SNI hostname in STATIC_HOSTS causes the proxy to close the connection."""
-        import wonderwall.__main__ as ww
-        monkeypatch.setattr(ww, "STATIC_HOSTS", {"localhost"})
+        import wonderwall.proxy as proxy_module
+        monkeypatch.setattr(proxy_module, "STATIC_HOSTS", {"localhost"})
         hello = build_client_hello("localhost")
         received = _connect_and_relay(proxy_server.proxy_port, hello)
         assert received == b""
 
     def test_proxy_closes_on_disallowed_host(self, proxy_server, monkeypatch):
         """SNI hostname not in ALLOWED_HOSTS causes the proxy to close the connection."""
-        import wonderwall.__main__ as ww
-        monkeypatch.setattr(ww, "ALLOWED_HOSTS", {"other.com"})
+        import wonderwall.proxy as proxy_module
+        monkeypatch.setattr(proxy_module, "ALLOWED_HOSTS", {"other.com"})
         hello = build_client_hello("localhost")
         received = _connect_and_relay(proxy_server.proxy_port, hello)
         assert received == b""
