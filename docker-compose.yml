@@ -3,7 +3,7 @@ services:
     build: .
     environment:
       DNS_A_RECORD_IP: ${WONDERWALL_IP:-172.128.0.128}
-      ALLOWED_DOMAINS: "*.google.com,google.com,*.httpbin.org,httpbin.org"
+      ALLOWED_HOSTS: "*.google.com,google.com,*.httpbin.org,httpbin.org"
     networks:
       default: {}
       internal:

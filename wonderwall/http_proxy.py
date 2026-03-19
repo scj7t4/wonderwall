@@ -14,7 +14,7 @@ log = logging.getLogger(__name__)
 HTTP_PORT = int(os.getenv("HTTP_PORT", "80"))
 STATIC_DIR = os.getenv("STATIC_DIR", "./static")
 STATIC_DOMAIN = os.getenv("STATIC_DOMAIN", socket.gethostname())
-ALLOWED_DOMAINS = _parse_allowed_hosts(os.getenv("ALLOWED_DOMAINS"))  # None = allow any host
+ALLOWED_HOSTS = _parse_allowed_hosts(os.getenv("ALLOWED_HOSTS"))  # None = allow any host
 
 _HOP_BY_HOP = frozenset({
     "connection", "keep-alive", "proxy-authenticate",
@@ -35,7 +35,7 @@ class HttpProxyHandler(SimpleHTTPRequestHandler):
         hostname = parts[0]
         port = int(parts[1]) if len(parts) == 2 and parts[1].isdigit() else 80
 
-        if ALLOWED_DOMAINS is not None and not any(p.fullmatch(hostname) for p in ALLOWED_DOMAINS):
+        if ALLOWED_HOSTS is not None and not any(p.fullmatch(hostname) for p in ALLOWED_HOSTS):
             log.warning("Proxy domain not allowed: %s", hostname)
             body = b"403 Forbidden\n"
             self.send_response_only(403)

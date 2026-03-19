@@ -223,15 +223,15 @@ class TestHttpVerbProxying:
 
 
 # ─────────────────────────────────────────────
-# ALLOWED_DOMAINS filtering
+# ALLOWED_HOSTS filtering
 # ─────────────────────────────────────────────
 
 
-class TestAllowedDomains:
+class TestAllowedHosts:
 
     def test_allowed_domain_is_proxied(self, static_server, upstream_server, monkeypatch):
         monkeypatch.setattr(static_module, "STATIC_DOMAIN", "files.example.com")
-        monkeypatch.setattr(static_module, "ALLOWED_DOMAINS", [re.compile(r"127\.0\.0\.1")])
+        monkeypatch.setattr(static_module, "ALLOWED_HOSTS", [re.compile(r"127\.0\.0\.1")])
         (upstream_server.root / "hi.txt").write_text("allowed")
         r = requests.get(
             f"{static_server.base_url}/hi.txt",
@@ -242,7 +242,7 @@ class TestAllowedDomains:
 
     def test_disallowed_domain_returns_403(self, static_server, monkeypatch):
         monkeypatch.setattr(static_module, "STATIC_DOMAIN", "files.example.com")
-        monkeypatch.setattr(static_module, "ALLOWED_DOMAINS", [re.compile(r"allowed\.com")])
+        monkeypatch.setattr(static_module, "ALLOWED_HOSTS", [re.compile(r"allowed\.com")])
         r = requests.get(
             f"{static_server.base_url}/anything",
             headers={"Host": "evil.com"},
@@ -250,9 +250,9 @@ class TestAllowedDomains:
         )
         assert r.status_code == 403
 
-    def test_no_allowed_domains_configured_proxies_all(self, static_server, upstream_server, monkeypatch):
+    def test_no_allowed_hosts_configured_proxies_all(self, static_server, upstream_server, monkeypatch):
         monkeypatch.setattr(static_module, "STATIC_DOMAIN", "files.example.com")
-        monkeypatch.setattr(static_module, "ALLOWED_DOMAINS", None)
+        monkeypatch.setattr(static_module, "ALLOWED_HOSTS", None)
         (upstream_server.root / "open.txt").write_text("open")
         r = requests.get(
             f"{static_server.base_url}/open.txt",
@@ -264,7 +264,7 @@ class TestAllowedDomains:
     def test_wildcard_allowed_domain(self, static_server, upstream_server, monkeypatch):
         from wonderwall.https_proxy import _wildcard_to_regex
         monkeypatch.setattr(static_module, "STATIC_DOMAIN", "files.example.com")
-        monkeypatch.setattr(static_module, "ALLOWED_DOMAINS", [_wildcard_to_regex("127.0.0.*")])
+        monkeypatch.setattr(static_module, "ALLOWED_HOSTS", [_wildcard_to_regex("127.0.0.*")])
         (upstream_server.root / "wc.txt").write_text("wildcard")
         r = requests.get(
             f"{static_server.base_url}/wc.txt",
