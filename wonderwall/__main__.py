@@ -1,19 +1,24 @@
 """
-SNI Pass-Through Proxy + Static File Server (asyncio)
-======================================================
+SNI Pass-Through Proxy + Static File Server + DNS Server (asyncio)
+==================================================================
 Port 443 : TLS pass-through, routed by SNI hostname
 Port 80  : Plain HTTP static file server
-
-No dependencies beyond the standard library.
+Port 53  : DNS server — answers all A queries with the server's IP
 """
 
 import asyncio
 import logging
 import os
+import re
+import socket
 import struct
 import threading
 from functools import partial
 from http.server import HTTPServer, SimpleHTTPRequestHandler
+
+from nserver import A, NameServer, Query
+from nserver.application import DirectApplication
+from nserver.transport import UDPv4Transport
 
 log = logging.getLogger(__name__)
 
@@ -32,6 +37,7 @@ def configure_logger():
 
 PROXY_PORT = 443
 HTTP_PORT = int(os.getenv("HTTP_PORT", "80"))
+DNS_PORT = int(os.getenv("DNS_PORT", "53"))
 STATIC_DIR = os.getenv("STATIC_DIR", "./static")
 STATIC_HOSTS = {"mystatic.local"}  # HTTP-only, never TLS proxied
 ALLOWED_HOSTS = None  # None = allow any SNI hostname
@@ -150,6 +156,24 @@ async def handle_tls(client_r: asyncio.StreamReader, client_w: asyncio.StreamWri
 
 
 # ─────────────────────────────────────────────
+# DNS SERVER  (UDP, threaded)
+# ─────────────────────────────────────────────
+
+
+def run_dns_server():
+    server_ip = os.getenv("SERVER_IP", socket.gethostbyname(socket.gethostname()))
+    ns = NameServer("wonderwall")
+
+    @ns.rule(re.compile(r".*"), ["A"])
+    def catch_all_a(query: Query):
+        return A(query.name, server_ip)
+
+    app = DirectApplication(ns, UDPv4Transport("0.0.0.0", DNS_PORT))
+    log.info("DNS server on :%d, resolving A queries to %s", DNS_PORT, server_ip)
+    app.run()
+
+
+# ─────────────────────────────────────────────
 # STATIC FILE SERVER  (plain HTTP, threaded)
 # ─────────────────────────────────────────────
 
@@ -180,7 +204,8 @@ async def main():
     server = await asyncio.start_server(handle_tls, "0.0.0.0", PROXY_PORT)
     log.info("SNI proxy on :%d", PROXY_PORT)
 
-    # Static server runs in its own thread — it's blocking but lightweight
+    # DNS and static servers run in their own threads — both blocking but lightweight
+    threading.Thread(target=run_dns_server, daemon=True).start()
     threading.Thread(target=run_static_server, daemon=True).start()
 
     async with server:
