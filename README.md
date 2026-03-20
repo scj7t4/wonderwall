@@ -18,6 +18,8 @@ Reads the TLS ClientHello packet to extract the SNI hostname, then opens a conne
 
 Returns `DNS_A_RECORD_IP` for every A-record query, causing all hostnames to resolve to the container. Other record types receive an empty NOERROR response.
 
+If `INTERNAL_SUBNET` is set, the server first attempts to resolve the queried hostname using the system resolver. If any resolved address falls within that subnet, the real address is returned instead of `DNS_A_RECORD_IP`, allowing clients to reach internal services directly without being proxied.
+
 ### HTTP Proxy (`:80`)
 
 Forwards HTTP requests to the upstream host named in the `Host` header. If `STATIC_DOMAIN` is set, requests for that domain are served from `STATIC_DIR` instead of being proxied; that domain is also excluded from TLS proxying. If `STATIC_DOMAIN` is not set, all requests are proxied. Proxied domains can be restricted to an allowlist via `ALLOWED_HOSTS`.
@@ -29,6 +31,7 @@ All configuration is via environment variables.
 | Variable | Default | Description |
 |---|---|---|
 | `DNS_A_RECORD_IP` | *(required)* | IP address returned for all DNS A-record queries |
+| `INTERNAL_SUBNET` | *(unset)* | CIDR subnet (e.g. `172.128.0.0/24`). When set, A-record queries that resolve to an address within this subnet return the real address instead of `DNS_A_RECORD_IP` |
 | `DNS_PORT` | `53` | DNS listening port |
 | `HTTP_PORT` | `80` | HTTP proxy listening port |
 | `STATIC_DIR` | `./static` | Directory to serve over HTTP when `STATIC_DOMAIN` is set |
