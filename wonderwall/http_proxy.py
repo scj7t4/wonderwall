@@ -24,12 +24,16 @@ _HOP_BY_HOP = frozenset({
 
 
 class HttpProxyHandler(SimpleHTTPRequestHandler):
+    """HTTP request handler that serves static files for STATIC_DOMAIN and proxies all other requests."""
+
     protocol_version = "HTTP/1.1"
 
     def log_message(self, fmt, *args):
+        """Route access log output through the module logger."""
         log.info("HTTP %s %s", self.address_string(), fmt % args)
 
     def _proxy_request(self, method: str) -> None:
+        """Forward an HTTP request to the upstream host named in the Host header."""
         host_header = self.headers.get("Host", "")
         parts = host_header.split(":", 1)
         hostname = parts[0]
@@ -95,34 +99,42 @@ class HttpProxyHandler(SimpleHTTPRequestHandler):
                 self.wfile.write(err_body)
 
     def do_GET(self):
+        """Serve a static file for STATIC_DOMAIN or proxy GET to the upstream host."""
         if STATIC_DOMAIN and self.headers.get("Host", "").split(":")[0] == STATIC_DOMAIN:
             super().do_GET()
         else:
             self._proxy_request("GET")
 
     def do_HEAD(self):
+        """Serve static file headers for STATIC_DOMAIN or proxy HEAD to the upstream host."""
         if STATIC_DOMAIN and self.headers.get("Host", "").split(":")[0] == STATIC_DOMAIN:
             super().do_HEAD()
         else:
             self._proxy_request("HEAD")
 
     def do_POST(self):
+        """Proxy POST to the upstream host."""
         self._proxy_request("POST")
 
     def do_PUT(self):
+        """Proxy PUT to the upstream host."""
         self._proxy_request("PUT")
 
     def do_DELETE(self):
+        """Proxy DELETE to the upstream host."""
         self._proxy_request("DELETE")
 
     def do_PATCH(self):
+        """Proxy PATCH to the upstream host."""
         self._proxy_request("PATCH")
 
     def do_OPTIONS(self):
+        """Proxy OPTIONS to the upstream host."""
         self._proxy_request("OPTIONS")
 
 
 def run_static_server():
+    """Start the HTTP server and block until it exits."""
     os.makedirs(STATIC_DIR, exist_ok=True)
     handler = partial(HttpProxyHandler, directory=STATIC_DIR)
     httpd = ThreadingHTTPServer(("0.0.0.0", HTTP_PORT), handler)

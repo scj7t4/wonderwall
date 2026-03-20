@@ -19,6 +19,7 @@ log = logging.getLogger(__name__)
 
 
 def configure_logger():
+    """Configure root logging with a timestamped format and level from LOG_LEVEL env var."""
     logging.basicConfig(
         format="[%(asctime)s][%(levelname)-8s] %(message)s",
         level=os.getenv("LOG_LEVEL", "INFO"),
@@ -31,6 +32,7 @@ DNS_A_RECORD_IP = os.getenv("DNS_A_RECORD_IP", None)
 
 
 async def main():
+    """Start the SNI proxy, DNS server, and static HTTP server."""
     configure_logger()
     if not DNS_A_RECORD_IP:
         raise ValueError("DNS_A_RECORD_IP environment variable is required")

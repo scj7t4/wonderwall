@@ -51,6 +51,7 @@ PEEK_BYTES = 512
 
 
 def extract_sni(data: bytes) -> str | None:
+    """Parse the SNI hostname from a TLS ClientHello record, or return None if not found."""
     try:
         if len(data) < 5 or data[0] != _TLS_CONTENT_TYPE_HANDSHAKE:
             return None
@@ -100,6 +101,7 @@ async def relay(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
 
 
 async def handle_tls(client_r: asyncio.StreamReader, client_w: asyncio.StreamWriter):
+    """Accept a TLS connection, extract the SNI hostname, and relay traffic to the upstream."""
     addr = client_w.get_extra_info("peername")
     try:
         # Read the first chunk — StreamReader buffers it, so we can prepend it

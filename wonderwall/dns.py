@@ -54,10 +54,12 @@ def _make_catch_all_a(internal_network, fallback_ip):
 
 
 def _catch_all_other(_: Query):
+    """Return NOERROR with an empty answer for any non-A query type."""
     return None  # NOERROR with empty answer — domain exists, record type unsupported
 
 
 def run_dns_server():
+    """Start the UDP DNS server and block until it exits."""
     ns = NameServer("wonderwall")
     internal_network = (
         ipaddress.ip_network(INTERNAL_SUBNET, strict=False) if INTERNAL_SUBNET else None
