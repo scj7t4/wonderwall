@@ -33,7 +33,18 @@ class HttpProxyHandler(SimpleHTTPRequestHandler):
         host_header = self.headers.get("Host", "")
         parts = host_header.split(":", 1)
         hostname = parts[0]
-        port = int(parts[1]) if len(parts) == 2 and parts[1].isdigit() else 80
+        _p = int(parts[1]) if len(parts) == 2 and parts[1].isdigit() else 80
+        if not (1 <= _p <= 65535):
+            log.warning("Invalid port in Host header: %s", host_header)
+            body = b"400 Bad Request\n"
+            self.send_response_only(400)
+            self.send_header("Content-Type", "text/plain")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            if method != "HEAD":
+                self.wfile.write(body)
+            return
+        port = _p
 
         if ALLOWED_HOSTS is not None and not any(p.fullmatch(hostname) for p in ALLOWED_HOSTS):
             log.warning("Proxy domain not allowed: %s", hostname)

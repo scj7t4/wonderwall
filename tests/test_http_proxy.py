@@ -202,6 +202,15 @@ class TestProxyBehavior:
         )
         assert r.status_code == 502
 
+    def test_invalid_port_in_host_header_returns_400(self, static_server, monkeypatch):
+        monkeypatch.setattr(static_module, "STATIC_DOMAIN", "files.example.com")
+        r = requests.get(
+            f"{static_server.base_url}/anything.txt",
+            headers={"Host": "example.com:99999"},
+            allow_redirects=False,
+        )
+        assert r.status_code == 400
+
 
 # ─────────────────────────────────────────────
 # HTTP verb proxying

@@ -35,6 +35,11 @@ def _parse_allowed_hosts(env_val: str | None) -> list[re.Pattern] | None:
     return [_wildcard_to_regex(p.strip()) for p in env_val.split(",") if p.strip()]
 
 
+_TLS_CONTENT_TYPE_HANDSHAKE = 0x16
+_TLS_HANDSHAKE_TYPE_CLIENT_HELLO = 0x01
+_TLS_EXTENSION_SNI = 0x0000
+_TLS_SNI_NAME_TYPE_HOST = 0x00
+
 STATIC_DOMAIN = os.getenv("STATIC_DOMAIN", socket.gethostname())  # HTTP-only host, never TLS proxied
 ALLOWED_HOSTS = _parse_allowed_hosts(os.getenv("ALLOWED_HOSTS"))  # None = allow any SNI hostname
 UPSTREAM_PORT = int(os.getenv("UPSTREAM_PORT", "443"))
@@ -43,10 +48,10 @@ PEEK_BYTES = 512
 
 def extract_sni(data: bytes) -> str | None:
     try:
-        if len(data) < 5 or data[0] != 0x16:
+        if len(data) < 5 or data[0] != _TLS_CONTENT_TYPE_HANDSHAKE:
             return None
         pos = 5
-        if data[pos] != 0x01:
+        if data[pos] != _TLS_HANDSHAKE_TYPE_CLIENT_HELLO:
             return None
         pos += 4 + 2 + 32  # type, length, version, random
         sid_len = data[pos]
@@ -64,14 +69,14 @@ def extract_sni(data: bytes) -> str | None:
             pos += 2
             ext_len = struct.unpack("!H", data[pos : pos + 2])[0]
             pos += 2
-            if ext_type == 0x0000:  # SNI extension
+            if ext_type == _TLS_EXTENSION_SNI:
                 pos += 3  # list length + name type
                 name_len = struct.unpack("!H", data[pos : pos + 2])[0]
                 pos += 2
                 return data[pos : pos + name_len].decode("ascii")
             pos += ext_len
-    except Exception:
-        pass
+    except (IndexError, struct.error) as e:
+        log.debug("Failed to parse SNI from packet: %s", e)
     return None
 
 
@@ -81,12 +86,12 @@ async def relay(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         while data := await reader.read(4096):
             writer.write(data)
             await writer.drain()
-    except Exception:
+    except (ConnectionError, OSError, asyncio.IncompleteReadError):
         pass
     finally:
         try:
             writer.close()
-        except Exception:
+        except OSError:
             pass
 
 
@@ -122,12 +127,12 @@ async def handle_tls(client_r: asyncio.StreamReader, client_w: asyncio.StreamWri
                 while data := await client_r.read(4096):
                     upstream_w.write(data)
                     await upstream_w.drain()
-            except Exception:
+            except (ConnectionError, OSError, asyncio.IncompleteReadError):
                 pass
             finally:
                 try:
                     upstream_w.write_eof()
-                except Exception:
+                except OSError:
                     pass
 
         await asyncio.gather(
@@ -135,7 +140,7 @@ async def handle_tls(client_r: asyncio.StreamReader, client_w: asyncio.StreamWri
             relay(upstream_r, client_w),
         )
 
-    except Exception as e:
+    except (ConnectionError, OSError) as e:
         log.error("%s: %s", addr, e)
     finally:
         client_w.close()
