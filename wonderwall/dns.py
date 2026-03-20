@@ -44,6 +44,19 @@ def _resolve_a(name: str, internal_network, fallback_ip: str) -> str:
     return fallback_ip
 
 
+def _make_catch_all_a(internal_network, fallback_ip):
+    """Return a handler that resolves A queries, preferring internal IPs when configured."""
+    def catch_all_a(query: Query):
+        log.info("Got query for %s", query.name)
+        ip = _resolve_a(query.name, internal_network, fallback_ip)
+        return A(query.name, ip)
+    return catch_all_a
+
+
+def _catch_all_other(_: Query):
+    return None  # NOERROR with empty answer — domain exists, record type unsupported
+
+
 def run_dns_server():
     ns = NameServer("wonderwall")
     internal_network = (
@@ -55,17 +68,8 @@ def run_dns_server():
             DNS_A_RECORD_IP,
         )
 
-    @ns.rule(re.compile(r".*"), ["A"])
-    def catch_all_a(query: Query):
-        log.info("Got query for %s", query.name)
-        ip = _resolve_a(query.name, internal_network, DNS_A_RECORD_IP)
-        return A(query.name, ip)
-
-    @ns.rule(re.compile(r".*"), ALL_QTYPES)
-    def catch_all_other(_: Query):
-        return (
-            None  # NOERROR with empty answer — domain exists, record type unsupported
-        )
+    ns.rule(re.compile(r".*"), ["A"])(_make_catch_all_a(internal_network, DNS_A_RECORD_IP))
+    ns.rule(re.compile(r".*"), ALL_QTYPES)(_catch_all_other)
 
     app = DirectApplication(ns, UDPv4Transport("0.0.0.0", DNS_PORT))
     log.info("DNS server on :%d, resolving A queries to %s", DNS_PORT, DNS_A_RECORD_IP)
