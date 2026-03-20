@@ -40,8 +40,12 @@ _TLS_HANDSHAKE_TYPE_CLIENT_HELLO = 0x01
 _TLS_EXTENSION_SNI = 0x0000
 _TLS_SNI_NAME_TYPE_HOST = 0x00
 
-STATIC_DOMAIN = os.getenv("STATIC_DOMAIN", socket.gethostname())  # HTTP-only host, never TLS proxied
-ALLOWED_HOSTS = _parse_allowed_hosts(os.getenv("ALLOWED_HOSTS"))  # None = allow any SNI hostname
+STATIC_DOMAIN = os.getenv(
+    "STATIC_DOMAIN", socket.gethostname()
+)  # HTTP-only host, never TLS proxied
+ALLOWED_HOSTS = _parse_allowed_hosts(
+    os.getenv("ALLOWED_HOSTS")
+)  # None = allow any SNI hostname
 UPSTREAM_PORT = int(os.getenv("UPSTREAM_PORT", "443"))
 PEEK_BYTES = 512
 
@@ -76,7 +80,7 @@ def extract_sni(data: bytes) -> str | None:
                 return data[pos : pos + name_len].decode("ascii")
             pos += ext_len
     except (IndexError, struct.error) as e:
-        log.debug("Failed to parse SNI from packet: %s", e)
+        log.warning("Failed to parse SNI from packet: %s", e)
     return None
 
 
@@ -86,13 +90,13 @@ async def relay(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         while data := await reader.read(4096):
             writer.write(data)
             await writer.drain()
-    except (ConnectionError, OSError, asyncio.IncompleteReadError):
-        pass
+    except (ConnectionError, OSError, asyncio.IncompleteReadError) as e:
+        log.warning("Relay error: %s", e)
     finally:
         try:
             writer.close()
-        except OSError:
-            pass
+        except OSError as e:
+            log.warning("Error closing relay writer: %s", e)
 
 
 async def handle_tls(client_r: asyncio.StreamReader, client_w: asyncio.StreamWriter):
@@ -111,7 +115,9 @@ async def handle_tls(client_r: asyncio.StreamReader, client_w: asyncio.StreamWri
             log.warning("%s: %s is HTTP-only, closing", addr, hostname)
             return
 
-        if ALLOWED_HOSTS is not None and not any(p.fullmatch(hostname) for p in ALLOWED_HOSTS):
+        if ALLOWED_HOSTS is not None and not any(
+            p.fullmatch(hostname) for p in ALLOWED_HOSTS
+        ):
             log.warning("%s: %s not in allowed hosts, closing", addr, hostname)
             return
 
@@ -127,13 +133,13 @@ async def handle_tls(client_r: asyncio.StreamReader, client_w: asyncio.StreamWri
                 while data := await client_r.read(4096):
                     upstream_w.write(data)
                     await upstream_w.drain()
-            except (ConnectionError, OSError, asyncio.IncompleteReadError):
-                pass
+            except (ConnectionError, OSError, asyncio.IncompleteReadError) as e:
+                log.warning("%s → %s: client-to-upstream error: %s", addr, hostname, e)
             finally:
                 try:
                     upstream_w.write_eof()
-                except OSError:
-                    pass
+                except OSError as e:
+                    log.warning("%s → %s: error sending EOF to upstream: %s", addr, hostname, e)
 
         await asyncio.gather(
             client_to_upstream(),
